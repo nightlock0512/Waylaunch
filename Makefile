@@ -1,7 +1,7 @@
 CC ?= gcc
 CFLAGS ?= -Wall -Os -ffunction-sections -fdata-sections -Iinclude -Iprotocol -I/usr/include/freetype2
 LDFLAGS ?= -Wl,--gc-sections -s
-LIBS = -lwayland-client -lxkbcommon -lfreetype -lpng
+LIBS = -lwayland-client -lxkbcommon -lfreetype -lpng -lm
 
 TARGET = waylaunch
 PACKAGE ?= waylaunch

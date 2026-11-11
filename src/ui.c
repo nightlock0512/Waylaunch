@@ -125,13 +125,19 @@ void ui_app_list_view(int x, int y, int w, int h, int item_height,
         int app_idx = filtered_indices[item_idx];
         int is_selected = (item_idx == selected);
 
+        int w, h;
+        uint32_t *pixels = load_image_stb_uint32(app_list[app_idx].icon_path, &w, &h);
+        
         if (is_selected) {
             draw_rect(x, item_y, list_w, item_height - 4, 0xFF2C313A);
             draw_rect(x, item_y, 4, item_height - 4, 0x0061AFEF);
-            draw_text(x + 16, item_y + 8, app_list[app_idx].name, -1, left, 16, 0x00FFFFFF);
+            draw_text(x + 64, item_y + 8, app_list[app_idx].name, -1, left, 16, 0x00FFFFFF);
+            draw_image(x + 16, item_y + 4, w, h, pixels);
         } else {
-            draw_text(x + 16, item_y + 8, app_list[app_idx].name, -1, left, 16, 0x00ABB2BF);
+            draw_text(x + 64, item_y + 8, app_list[app_idx].name, -1, left, 16, 0x00ABB2BF);
+            draw_image(x + 16, item_y + 4, w, h, pixels);
         }
+        free(pixels);
     }
 
     // スクロールバー描画（全体が画面内に収まらない場合のみ）

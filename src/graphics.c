@@ -9,6 +9,9 @@
 
 #include "graphics.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 struct buffer_info *current_draw_buf = NULL;
 static FT_Library ft_library = NULL;
 FT_Face ft_face = NULL;
@@ -53,6 +56,112 @@ void draw_rect(int x, int y, int w, int h, uint32_t color)
             draw_pixel(col, row, color);
         }
     }
+}
+
+uint32_t* load_image_stb_uint32(const char *path, int *width, int *height) {
+    // Disable vertical flip; we will keep stb_image's natural top‑left orientation
+    stbi_set_flip_vertically_on_load(0);
+
+
+    int channels;
+    // 第4引数に 4 (STBI_rgb_alpha) を指定して強制的にRGBA 8bit/ch で取得
+    unsigned char *data = stbi_load(path, width, height, &channels, 4);
+    if (!data) {
+        return NULL;
+    }
+
+    size_t pixel_count = (*width) * (*height);
+    uint32_t *buffer = (uint32_t*)malloc(pixel_count * sizeof(uint32_t));
+
+    // Convert RGBA to ARGB (0xAARRGGBB) in a temporary buffer
+    uint32_t *tmp_buf = (uint32_t*)malloc(pixel_count * sizeof(uint32_t));
+    for (size_t i = 0; i < pixel_count; i++) {
+        uint8_t r = data[i * 4 + 0];
+        uint8_t g = data[i * 4 + 1];
+        uint8_t b = data[i * 4 + 2];
+        uint8_t a = data[i * 4 + 3];
+        tmp_buf[i] = ((uint32_t)a << 24) |
+                     ((uint32_t)r << 16) |
+                     ((uint32_t)g << 8)  |
+                     (uint32_t)b;
+    }
+
+    // Desired icon size
+    const int target_w = 32;
+    const int target_h = 32;
+    // Allocate final buffer
+    uint32_t *final_buf = (uint32_t*)malloc(target_w * target_h * sizeof(uint32_t));
+    // Nearest‑neighbor scaling
+    for (int y = 0; y < target_h; ++y) {
+        int src_y = y * (*height) / target_h;
+        for (int x = 0; x < target_w; ++x) {
+            int src_x = x * (*width) / target_w;
+            final_buf[(target_w - y - 1) * target_w + x] = tmp_buf[src_y * (*width) + src_x];
+        }
+    }
+
+    // Clean up original data
+    free(tmp_buf);
+    // Update width/height to the standardized size
+    *width = target_w;
+    *height = target_h;
+    return final_buf;
+    return buffer;
+}
+
+void draw_image(int x, int y, int w, int h, const uint32_t *img_data) {
+    if (!img_data || !current_draw_buf || !current_draw_buf->shm_data) return;
+
+    if (x >= WIDTH || y >= HEIGHT || x + w <= 0 || y + h <= 0) return;
+
+    int screen_x_start = (x < 0) ? 0 : x;
+    int screen_x_end   = (x + w > WIDTH) ? WIDTH : (x + w);
+
+    int screen_y_start = (y < 0) ? 0 : y;
+    int screen_y_end   = (y + h > HEIGHT) ? HEIGHT : (y + h);
+
+    int copy_width = screen_x_end - screen_x_start;
+    if (copy_width <= 0) return;
+
+    for (int sy = screen_y_start; sy < screen_y_end; sy++) {
+        // img_y is the source row relative to the image's top-left
+        int img_y = sy - y;
+        // Flip vertically: source row counted from bottom
+        int src_y = (h - 1) - img_y;
+        int img_x = screen_x_start - x;
+
+        uint32_t *buf_line = current_draw_buf->shm_data + (sy * WIDTH) + screen_x_start;
+        const uint32_t *data_line = img_data + (src_y * w) + img_x;
+
+        for (int px = 0; px < copy_width; px++) {
+            uint32_t src = data_line[px];
+            uint8_t a = (src >> 24) & 0xFF;
+
+            if (a == 0) {
+                // 完全透明 → 背景をそのまま
+                continue;
+            } else if (a == 255) {
+                // 完全不透明 → そのまま上書き
+                buf_line[px] = src;
+            } else {
+                // アルファブレンド
+                uint32_t dst = buf_line[px];
+                uint8_t sr = (src >> 16) & 0xFF;
+                uint8_t sg = (src >>  8) & 0xFF;
+                uint8_t sb =  src        & 0xFF;
+                uint8_t dr = (dst >> 16) & 0xFF;
+                uint8_t dg = (dst >>  8) & 0xFF;
+                uint8_t db =  dst        & 0xFF;
+
+                uint8_t or_ = (sr * a + dr * (255 - a)) / 255;
+                uint8_t og  = (sg * a + dg * (255 - a)) / 255;
+                uint8_t ob  = (sb * a + db * (255 - a)) / 255;
+
+                buf_line[px] = (0xFF << 24) | (or_ << 16) | (og << 8) | ob;
+            }
+        }
+    }
+
 }
 
 // 現在時刻をミリ秒で取得する

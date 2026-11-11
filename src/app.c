@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <sys/wait.h>
 #include <dirent.h>
+#include <ftw.h>
 
 #include "app.h"
 
@@ -18,45 +19,140 @@ int filtered_indices[MAX_APPS];
 int filtered_count = 0;
 int selected_index = 0;
 
-// アイコンファイル（PNG）のパスを解決する
+static char target_icon_name[256];
+static char found_path[512];
+
+// nftw からコールバックされる判定関数
+static int icon_search_callback(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+    (void)sb; (void)ftwbuf; // 未使用警告の回避
+
+    // 通常のファイルのみチェック
+    if (tflag == FTW_F) {
+        const char *filename = strrchr(fpath, '/');
+        filename = (filename) ? filename + 1 : fpath;
+
+        // 1. 完全一致（例: icon が "firefox.png" の場合）
+        if (strcmp(filename, target_icon_name) == 0) {
+            strncpy(found_path, fpath, sizeof(found_path) - 1);
+            return 1; // 検索中断（発見）
+        }
+
+        // 2. 拡張子補完一致（例: icon が "firefox" で "firefox.png", "firefox.svg" など）
+        size_t name_len = strlen(target_icon_name);
+        if (strncmp(filename, target_icon_name, name_len) == 0 && filename[name_len] == '.') {
+            const char *ext = filename + name_len + 1;
+            if (strcmp(ext, "png") == 0 || strcmp(ext, "svg") == 0 || strcmp(ext, "xpm") == 0) {
+                strncpy(found_path, fpath, sizeof(found_path) - 1);
+                return 1; // 検索中断（発見）
+            }
+        }
+    }
+    return 0; // 検索継続
+}
+
 void resolve_icon_path(struct app_entry *app) {
     if (app->icon[0] == '\0') return;
 
-    // フルパスが直接指定されている場合
+    // 1. フルパス指定の場合
     if (app->icon[0] == '/') {
         if (access(app->icon, R_OK) == 0) {
             strncpy(app->icon_path, app->icon, sizeof(app->icon_path) - 1);
+            app->icon_path[sizeof(app->icon_path) - 1] = '\0';
             return;
         }
     }
 
-    const char *search_dirs[] = {
-        "/usr/share/icons/hicolor/48x48/apps",
-        "/usr/share/icons/hicolor/32x32/apps",
-        "/usr/share/icons/hicolor/64x64/apps",
-        "/usr/share/icons/hicolor/128x128/apps",
-        "/usr/share/icons/hicolor/256x256/apps",
-        "/usr/share/pixmaps",
-        NULL
-    };
+    // 2. XDG 仕様に従い検索ベースディレクトリを構築
+    //    $XDG_DATA_HOME (デフォルト: $HOME/.local/share) と
+    //    $XDG_DATA_DIRS (デフォルト: /usr/local/share:/usr/share) から
+    //    それぞれ /icons と /pixmaps を検索対象にする
 
-    char candidate[512];
-    for (int i = 0; search_dirs[i]; i++) {
-        // .png なしで指定されている場合
-        snprintf(candidate, sizeof(candidate), "%s/%s.png", search_dirs[i], app->icon);
-        if (access(candidate, R_OK) == 0) {
-            strncpy(app->icon_path, candidate, sizeof(app->icon_path) - 1);
-            return;
-        }
-        // すでに .png が含まれている場合
-        snprintf(candidate, sizeof(candidate), "%s/%s", search_dirs[i], app->icon);
-        if (access(candidate, R_OK) == 0) {
-            strncpy(app->icon_path, candidate, sizeof(app->icon_path) - 1);
+    // --- XDG_DATA_HOME ---
+    char data_home[512];
+    const char *xdg_data_home = getenv("XDG_DATA_HOME");
+    const char *home = getenv("HOME");
+    if (xdg_data_home && xdg_data_home[0]) {
+        strncpy(data_home, xdg_data_home, sizeof(data_home) - 1);
+        data_home[sizeof(data_home) - 1] = '\0';
+    } else if (home && home[0]) {
+        snprintf(data_home, sizeof(data_home), "%s/.local/share", home);
+    } else {
+        data_home[0] = '\0';
+    }
+
+    // --- XDG_DATA_DIRS ---
+    const char *xdg_data_dirs = getenv("XDG_DATA_DIRS");
+    char dirs_buf[2048];
+    if (xdg_data_dirs && xdg_data_dirs[0]) {
+        strncpy(dirs_buf, xdg_data_dirs, sizeof(dirs_buf) - 1);
+        dirs_buf[sizeof(dirs_buf) - 1] = '\0';
+    } else {
+        strncpy(dirs_buf, "/usr/local/share:/usr/share", sizeof(dirs_buf) - 1);
+        dirs_buf[sizeof(dirs_buf) - 1] = '\0';
+    }
+
+    // 検索ディレクトリを動的に構築（各 data dir に /icons と /pixmaps を付加）
+    #define MAX_SEARCH_DIRS 64
+    const char *search_dirs[MAX_SEARCH_DIRS];
+    static char search_paths[MAX_SEARCH_DIRS][512]; // static で寿命を保証
+    int dir_count = 0;
+
+    // data_home/icons, data_home/pixmaps を最優先で追加
+    if (data_home[0]) {
+        snprintf(search_paths[dir_count], sizeof(search_paths[dir_count]),
+                 "%s/icons", data_home);
+        search_dirs[dir_count] = search_paths[dir_count];
+        dir_count++;
+
+        snprintf(search_paths[dir_count], sizeof(search_paths[dir_count]),
+                 "%s/pixmaps", data_home);
+        search_dirs[dir_count] = search_paths[dir_count];
+        dir_count++;
+    }
+
+    // XDG_DATA_DIRS の各エントリに /icons と /pixmaps を追加
+    char *saveptr = NULL;
+    char *tok = strtok_r(dirs_buf, ":", &saveptr);
+    while (tok && dir_count < MAX_SEARCH_DIRS - 2) {
+        // 末尾の / を除去
+        size_t tlen = strlen(tok);
+        while (tlen > 1 && tok[tlen - 1] == '/') tok[--tlen] = '\0';
+
+        snprintf(search_paths[dir_count], sizeof(search_paths[dir_count]),
+                 "%s/icons", tok);
+        search_dirs[dir_count] = search_paths[dir_count];
+        dir_count++;
+
+        snprintf(search_paths[dir_count], sizeof(search_paths[dir_count]),
+                 "%s/pixmaps", tok);
+        search_dirs[dir_count] = search_paths[dir_count];
+        dir_count++;
+
+        tok = strtok_r(NULL, ":", &saveptr);
+    }
+    search_dirs[dir_count] = NULL;
+
+    // 検索状態の初期化
+    strncpy(target_icon_name, app->icon, sizeof(target_icon_name) - 1);
+    target_icon_name[sizeof(target_icon_name) - 1] = '\0';
+    found_path[0] = '\0';
+
+    // 3. 各ディレクトリ以下を再帰的に走査
+    for (int i = 0; search_dirs[i] != NULL; i++) {
+        if (access(search_dirs[i], R_OK) != 0) continue;
+
+        // nftw: ディレクトリ以下を再帰探索
+        if (nftw(search_dirs[i], icon_search_callback, 20, FTW_PHYS) == 1) {
+            // ヒットした場合
+            strncpy(app->icon_path, found_path, sizeof(app->icon_path) - 1);
+            app->icon_path[sizeof(app->icon_path) - 1] = '\0';
             return;
         }
     }
+
+    // 見つからなかった場合
+    app->icon_path[0] = '\0';
 }
-
 // .desktop ファイルから Name と Exec を抽出
 void parse_desktop_file(const char *filepath) {
     if (app_count >= MAX_APPS) return;
@@ -126,6 +222,8 @@ void parse_desktop_file(const char *filepath) {
 
     strncpy(app_list[app_count].name, name, sizeof(app_list[app_count].name) - 1);
     strncpy(app_list[app_count].exec, exec, sizeof(app_list[app_count].exec) - 1);
+    strncpy(app_list[app_count].icon, icon, sizeof(app_list[app_count].icon) - 1);
+    resolve_icon_path(&app_list[app_count]);
     app_count++;
 }
 
@@ -149,19 +247,51 @@ void scan_applications_dir(const char *dirpath) {
     closedir(dir);
 }
 
-// システム全体のアプリを読み込む
+// システム全体のアプリを読み込む（XDG_DATA_HOME / XDG_DATA_DIRS に準拠）
 void load_applications(void) {
     app_count = 0;
-    // ユーザーローカル
+
+    // XDG_DATA_HOME
+    const char *xdg_data_home = getenv("XDG_DATA_HOME");
     const char *home = getenv("HOME");
-    if (home) {
+    char data_home[512];
+    if (xdg_data_home && xdg_data_home[0]) {
+        strncpy(data_home, xdg_data_home, sizeof(data_home) - 1);
+        data_home[sizeof(data_home) - 1] = '\0';
+    } else if (home && home[0]) {
+        snprintf(data_home, sizeof(data_home), "%s/.local/share", home);
+    } else {
+        data_home[0] = '\0';
+    }
+
+    if (data_home[0]) {
         char user_apps[512];
-        snprintf(user_apps, sizeof(user_apps), "%s/.local/share/applications", home);
+        snprintf(user_apps, sizeof(user_apps), "%s/applications", data_home);
         scan_applications_dir(user_apps);
     }
-    // システム共通
-    scan_applications_dir("/usr/share/applications");
-    scan_applications_dir("/usr/local/share/applications");
+
+    // XDG_DATA_DIRS
+    const char *xdg_data_dirs = getenv("XDG_DATA_DIRS");
+    char dirs_buf[2048];
+    if (xdg_data_dirs && xdg_data_dirs[0]) {
+        strncpy(dirs_buf, xdg_data_dirs, sizeof(dirs_buf) - 1);
+        dirs_buf[sizeof(dirs_buf) - 1] = '\0';
+    } else {
+        strncpy(dirs_buf, "/usr/local/share:/usr/share", sizeof(dirs_buf) - 1);
+        dirs_buf[sizeof(dirs_buf) - 1] = '\0';
+    }
+
+    char *saveptr = NULL;
+    char *tok = strtok_r(dirs_buf, ":", &saveptr);
+    while (tok) {
+        size_t tlen = strlen(tok);
+        while (tlen > 1 && tok[tlen - 1] == '/') tok[--tlen] = '\0';
+
+        char app_dir[512];
+        snprintf(app_dir, sizeof(app_dir), "%s/applications", tok);
+        scan_applications_dir(app_dir);
+        tok = strtok_r(NULL, ":", &saveptr);
+    }
 
     printf("Loaded %d applications from system.\n", app_count);
 }

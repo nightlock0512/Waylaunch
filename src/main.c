@@ -105,7 +105,7 @@ int main()
             ui_inputbox(30, 36, WIDTH - 60, 40, search_query, preedit_string, cursor_blink);
 
             // 4. アプリリストビュー (y: 90 から 高さ 270 分の領域)
-            ui_app_list_view(30, 90, WIDTH - 60, HEIGHT - 120, 38,
+            ui_app_list_view(30, 90, WIDTH - 60, HEIGHT - 120, 44,
                              &scroll_offset, selected_index, search_query);
 
             // 5. フッターヘルプ

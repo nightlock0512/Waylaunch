@@ -324,7 +324,7 @@ static void pointer_motion(void *data, struct wl_pointer *pointer,
 
     // マウスホバーでアプリ項目を選択
     int list_y = 90;
-    int item_h = 38;
+    int item_h = 44;
     if (mouse_x >= 30 && mouse_x <= WIDTH - 30 && mouse_y >= list_y) {
         int index_in_view = (mouse_y - list_y) / item_h;
         int target = scroll_offset + index_in_view;

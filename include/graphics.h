@@ -29,8 +29,10 @@ void clear_screen(uint32_t color);
 void draw_pixel(int x, int y, uint32_t color);
 void draw_dot(int cx, int cy, int size, uint32_t color);
 void draw_rect(int x, int y, int w, int h, uint32_t color);
+void draw_image(int x, int y, int w, int h, const uint32_t *img_data);
 void blend_pixel(int x, int y, uint32_t color, uint8_t alpha);
 void draw_text(int x, int y, const char *text, int len, text_aline aline, int pixel_size, uint32_t color);
 void draw_rect_outline(int x, int y, int w, int h, uint32_t color);
+uint32_t* load_image_stb_uint32(const char *path, int *width, int *height);
 
 #endif // GRAPHICS_H

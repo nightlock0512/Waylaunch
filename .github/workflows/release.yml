@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            dpkg-dev \
+            libfreetype-dev \
+            libpng-dev \
+            libwayland-dev \
+            libxkbcommon-dev
+
+      - name: Build
+        run: make clean all
+
+      - name: Build versioned Debian package
+        run: VERSION="${GITHUB_REF_NAME#v}" make deb
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            waylaunch
+            waylaunch_*.deb

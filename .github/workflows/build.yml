@@ -2,6 +2,8 @@ name: Build
 
 on:
   push:
+    branches:
+      - "**"
   pull_request:
   workflow_dispatch:
 
@@ -31,12 +33,7 @@ jobs:
         run: make clean all
 
       - name: Build Debian package
-        run: |
-          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}" make deb
-          else
-            make deb
-          fi
+        run: make deb
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -46,25 +43,3 @@ jobs:
             waylaunch
             *.deb
           if-no-files-found: error
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: waylaunch-${{ runner.arch }}
-          path: release-artifacts
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
-            release-artifacts/waylaunch
-            release-artifacts/*.deb

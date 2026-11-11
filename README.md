@@ -1,5 +1,7 @@
 # Waylaunch
 
+[English](README.md) | [日本語](README.ja.md)
+
 Waylaunch is a lightweight application launcher for Wayland desktops. It searches installed `.desktop` applications as you type and starts the selected application.
 
 ## Features

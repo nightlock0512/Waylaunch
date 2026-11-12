@@ -9,10 +9,17 @@
 #include "app.h"
 #include "graphics.h"
 #include "ui.h"
+#include "util.h"
 #include "wayland_backend.h"
 
-int main()
+int main(int argc, char **argv)
 {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--debug") == 0 || strcmp(argv[i], "-d") == 0) {
+            debug_enabled = 1;
+        }
+    }
+
     if (init_freetype() < 0)
     {
         fprintf(stderr, "Warning: FreeType font initialization failed\n");

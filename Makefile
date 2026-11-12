@@ -15,6 +15,8 @@ SRCS = src/main.c \
        src/graphics.c \
        src/ui.c \
        src/app.c \
+       src/calc.c \
+       src/util.c \
        protocol/xdg-shell-client-protocol.c \
        protocol/text-input-unstable-v3-protocol.c
 
@@ -31,7 +33,7 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 run: build
-	./$(TARGET)
+	./$(TARGET) --debug
 
 deb: $(TARGET)
 	@set -eu; \

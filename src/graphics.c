@@ -8,6 +8,7 @@
 #include <wayland-client.h>
 
 #include "graphics.h"
+#include "util.h"
 
 struct buffer_info *current_draw_buf = NULL;
 static FT_Library ft_library = NULL;
@@ -76,7 +77,7 @@ int init_freetype(void) {
     for (int i = 0; font_paths[i]; i++) {
         if (access(font_paths[i], R_OK) == 0) {
             if (FT_New_Face(ft_library, font_paths[i], 0, &ft_face) == 0) {
-                printf("Loaded font: %s\n", font_paths[i]);
+                debug_log("Loaded font: %s\n", font_paths[i]);
                 return 0;
             }
         }

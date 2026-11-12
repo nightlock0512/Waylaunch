@@ -1,0 +1,1 @@
+int calc(const char *src_text, double *result, char *error_msg, size_t error_size);

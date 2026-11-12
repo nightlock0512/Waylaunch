@@ -10,6 +10,7 @@
 #include <dirent.h>
 
 #include "app.h"
+#include "util.h"
 
 struct app_entry app_list[MAX_APPS];
 int app_count = 0;
@@ -163,7 +164,7 @@ void load_applications(void) {
     scan_applications_dir("/usr/share/applications");
     scan_applications_dir("/usr/local/share/applications");
 
-    printf("Loaded %d applications from system.\n", app_count);
+    debug_log("Loaded %d applications from system.\n", app_count);
 }
 
 // 大文字小文字を区別しない部分一致判定

@@ -5,6 +5,7 @@
 
 #include "ui.h"
 #include "app.h"
+#include "calc.h"
 
 // 1. 入力ボックス（確定文字列 + IME未確定文字列の同時表示対応）
 void ui_inputbox(int x, int y, int w, int h, const char *text, const char *preedit, int cursor_visible) {
@@ -85,17 +86,39 @@ void run_websearch_ui(int x, int y, int w, int h, int item_height, const char *s
     draw_text(x + 16, y + 8, run_msg, -1, left, 16, 0x0098C379);
 }
 
+// 電卓の案内
+void run_calc_ui(int x, int y, int w, int h, int item_height, const char *search_query) {
+    draw_rect(x, y, w, item_height - 4, 0xFF2C313A);
+    draw_rect(x, y, 4, item_height - 4, 0x0098C379); // 緑インジケータ
+    char run_msg[300];
+    char error_msg[64] = "";
+    double result = 0.0;
+    char *calctext = strdup(search_query + 1);
+    if (calc(calctext, &result, error_msg, sizeof(error_msg))) {
+        snprintf(run_msg, sizeof(run_msg), "= %.15g", result);
+    } else {
+        snprintf(run_msg, sizeof(run_msg), "= %s", error_msg[0] ? error_msg : "Invalid expression");
+    }
+    free(calctext);
+    draw_text(x + 16, y + 8, run_msg, -1, left, 16, 0x0098C379);
+}
+
 
 // 2. リストビュー（スクロール計算 & アイテム一覧 & スクロールバー描画）
 void ui_app_list_view(int x, int y, int w, int h, int item_height,
                       int *scroll_offset, int selected, const char *search_query) {
     int max_display = h / item_height;
 
+    if (search_query[0]=='=') {
+        run_calc_ui(x,y,w,h,item_height,search_query);
+        return;
+    }
+
     if (search_query[0]=='>') {
         run_command_ui(x,y,w,h,item_height,search_query);
         return;
     }
-    
+
     // 候補が0件の場合
     if (filtered_count == 0) {
         if (search_query && strlen(search_query) > 0) {

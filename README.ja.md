@@ -10,6 +10,8 @@ Waylaunchは、Waylandデスクトップ向けの軽量なアプリケーショ�
 - キーボード操作とマウス選択に対応しています。
 - コンポジターがWayland text-input-v3プロトコルをサポートしている場合、IME入力を利用できます。
 - `>` に続けて入力したコマンドを実行できます。
+- `=` に続けて入力した四則演算式を計算し、Enterキーで結果をWaylandクリップボードにコピーできます。小数、括弧、単項の `+` / `-` に対応しています。
+- 通常起動時はデバッグログを抑制し、`--debug` または `-d` を指定したときに表示します。
 
 ## 必要環境
 
@@ -28,6 +30,14 @@ sudo apt install build-essential dpkg-dev libwayland-dev libxkbcommon-dev libfre
 make
 ./waylaunch
 ```
+
+デバッグログを有効にして起動する場合:
+
+```sh
+./waylaunch --debug
+```
+
+`make run` でもデバッグログ付きで起動できます。
 
 Debianパッケージを作成するには、次を実行します。
 
@@ -49,7 +59,10 @@ sudo apt install ./waylaunch_1.0.0_$(dpkg --print-architecture).deb
 | 上下矢印キー | アプリを選択します |
 | Enterキーまたは左クリック | 選択中のアプリを起動します |
 | `>` に続けてコマンドを入力し、Enter | コマンドを実行します |
+| `=` に続けて計算式を入力 | 計算結果をプレビューします。Enterで結果をクリップボードにコピーします |
 | Escキー | Waylaunchを終了します |
+
+計算式では `+`、`-`、`*`、`/`、括弧を使用できます。無効な式の場合は結果欄に `Invalid expression` と表示されます。
 
 ## リリース
 

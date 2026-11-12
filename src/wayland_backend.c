@@ -9,6 +9,8 @@
 
 #include "wayland_backend.h"
 #include "app.h"
+#include "calc.h"
+#include "util.h"
 
 struct wl_display *display = NULL;
 struct wl_registry *registry = NULL;
@@ -21,6 +23,10 @@ struct wl_shm *shm = NULL;
 struct wl_seat *seat = NULL;
 struct wl_keyboard *keyboard = NULL;
 struct wl_pointer *pointer = NULL;
+struct wl_data_device_manager *data_device_manager = NULL;
+struct wl_data_device *data_device = NULL;
+struct wl_data_source *clipboard_source = NULL;
+static char clipboard_payload[8192] = "";
 struct zwp_text_input_manager_v3 *text_input_manager = NULL;
 struct zwp_text_input_v3 *text_input = NULL;
 
@@ -50,30 +56,6 @@ int scroll_offset = 0;
 
 struct buffer_info buffers[2];
 
-// UTF-8 文字列から最後の1文字（マルチバイト対応）を削除
-void search_query_backspace(void) {
-    if (search_query_len <= 0) return;
-    int i = search_query_len - 1;
-    // UTF-8 の後続バイト (10xxxxxx = 0x80..0xBF) をスキップして先頭バイトを見つける
-    while (i > 0 && ((unsigned char)search_query[i] & 0xC0) == 0x80) {
-        i--;
-    }
-    search_query[i] = '\0';
-    search_query_len = i;
-}
-
-// UTF-8 文字列を検索クエリに追加
-void search_query_append(const char *text) {
-    if (!text) return;
-    int add_len = strlen(text);
-    if (search_query_len + add_len < SEARCH_BUFFER_SIZE) {
-        memcpy(search_query + search_query_len, text, add_len);
-        search_query_len += add_len;
-        search_query[search_query_len] = '\0';
-        update_filter(search_query);
-    }
-}
-
 static int create_shm_file(off_t size)
 {
     int fd = memfd_create("shm", MFD_CLOEXEC);
@@ -85,6 +67,72 @@ static int create_shm_file(off_t size)
         return -1;
     }
     return fd;
+}
+
+static void clipboard_source_send(void *data,
+                                struct wl_data_source *wl_data_source,
+                                const char *mime_type,
+                                int32_t fd)
+{
+    if (fd < 0) {
+        return;
+    }
+
+    size_t len = strlen(clipboard_payload);
+    if (len > 0) {
+        ssize_t written = write(fd, clipboard_payload, len);
+        (void)written;
+    }
+    close(fd);
+}
+
+static void clipboard_source_cancelled(void *data,
+                                      struct wl_data_source *wl_data_source)
+{
+    if (clipboard_source == wl_data_source) {
+        clipboard_source = NULL;
+    }
+}
+
+static const struct wl_data_source_listener clipboard_source_listener = {
+    .target = NULL,
+    .send = clipboard_source_send,
+    .cancelled = clipboard_source_cancelled,
+};
+
+static int copy_to_clipboard(const char *text, uint32_t serial)
+{
+    if (text == NULL || *text == '\0' || data_device_manager == NULL || seat == NULL) {
+        return 0;
+    }
+
+    if (data_device == NULL) {
+        data_device = wl_data_device_manager_get_data_device(data_device_manager, seat);
+    }
+    if (data_device == NULL) {
+        return 0;
+    }
+
+    if (clipboard_source != NULL) {
+        wl_data_source_destroy(clipboard_source);
+        clipboard_source = NULL;
+    }
+
+    clipboard_source = wl_data_device_manager_create_data_source(data_device_manager);
+    if (clipboard_source == NULL) {
+        return 0;
+    }
+
+    wl_data_source_add_listener(clipboard_source, &clipboard_source_listener, NULL);
+    wl_data_source_offer(clipboard_source, "text/plain;charset=utf-8");
+    wl_data_source_offer(clipboard_source, "text/plain");
+
+    snprintf(clipboard_payload, sizeof(clipboard_payload), "%s", text);
+    wl_data_device_set_selection(data_device, clipboard_source, serial);
+    wl_display_flush(display);
+    wl_display_roundtrip(display);
+
+    return 1;
 }
 
 static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial)
@@ -167,7 +215,9 @@ static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, u
 static const struct xdg_surface_listener xdg_surface_listener = {.configure = xdg_surface_configure};
 
 static void xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel, int32_t width, int32_t height, struct wl_array *states) {}
-static void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) { exit(0); }
+static void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) {
+    running = 0;
+}
 static const struct xdg_toplevel_listener xdg_toplevel_listener = {
     .configure = xdg_toplevel_configure,
     .close = xdg_toplevel_close};
@@ -242,10 +292,23 @@ static void keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
                 int app_idx = filtered_indices[selected_index];
                 launch_app(app_list[app_idx].exec);
             } else if (search_query_len > 0) {
-                if (search_query[0] == '>')
-                {
+                if (search_query[0] == '>') {
                     launch_app(search_query+1);
-                }else{
+                } else if(search_query[0] == '=') {
+                    char *formula = search_query + 1;
+                    double result = 0.0;
+                    char error_msg[64] = "";
+                    if (calc(formula, &result, error_msg, sizeof(error_msg))) {
+                        char output[128];
+                        snprintf(output, sizeof(output), "%.15g", result);
+                        debug_log("%s\n", output);
+                        copy_to_clipboard(output, serial);
+                        running = 0;
+                        return;
+                    } else {
+                        debug_log("Invalid expression\n");
+                    }
+                } else {
                     char base_command[] = "open https://google.com/search?q=";
                     char *search_command = malloc(strlen(search_query) + strlen(base_command) + 1);
                     if (search_command != NULL) {
@@ -437,8 +500,8 @@ static const struct wl_seat_listener seat_listener = {
 
 static void registry_global(void *data, struct wl_registry *registry, uint32_t id, const char *interface, uint32_t version)
 {
-    // This line prints every protocol name to your terminal so we can debug
-    printf("Found protocol: %s (v%d)\n", interface, version);
+    // デバッグ時のみプロトコル一覧を表示
+    debug_log("Found protocol: %s (v%d)\n", interface, version);
 
     if (strcmp(interface, "wl_compositor") == 0)
     {
@@ -459,6 +522,16 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t i
     {
         seat = wl_registry_bind(registry, id, &wl_seat_interface, 1);
         wl_seat_add_listener(seat, &seat_listener, NULL);
+        if (data_device_manager != NULL && data_device == NULL) {
+            data_device = wl_data_device_manager_get_data_device(data_device_manager, seat);
+        }
+    }
+    else if (strcmp(interface, "wl_data_device_manager") == 0)
+    {
+        data_device_manager = wl_registry_bind(registry, id, &wl_data_device_manager_interface, 1);
+        if (seat != NULL && data_device == NULL) {
+            data_device = wl_data_device_manager_get_data_device(data_device_manager, seat);
+        }
     }
     else if (strcmp(interface, "zwp_text_input_manager_v3") == 0)
     {

@@ -47,7 +47,5 @@ struct buffer_info *get_free_buffer(void);
 int begin_frame(void);
 void end_frame(void);
 void update_text_input_state(void);
-void search_query_backspace(void);
-void search_query_append(const char *text);
 
 #endif // WAYLAND_BACKEND_H

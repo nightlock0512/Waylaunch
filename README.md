@@ -9,6 +9,8 @@ Waylaunch is a lightweight application launcher for Wayland desktops. It searche
 - Searches applications from `~/.local/share/applications`, `/usr/share/applications`, and `/usr/local/share/applications`.
 - Supports keyboard navigation, mouse selection, and text input through the Wayland text-input-v3 protocol when available.
 - Runs a command entered with the `>` prefix.
+- Evaluates arithmetic expressions entered with the `=` prefix and copies the result to the Wayland clipboard on Enter. Supports decimals, parentheses, and unary `+` / `-`.
+- Suppresses debug logs by default. Use `--debug` or `-d` to enable them.
 
 ## Requirements
 
@@ -27,6 +29,14 @@ sudo apt install build-essential dpkg-dev libwayland-dev libxkbcommon-dev libfre
 make
 ./waylaunch
 ```
+
+To enable debug logs:
+
+```sh
+./waylaunch --debug
+```
+
+`make run` also starts Waylaunch with debug logs enabled.
 
 Build a Debian package with:
 
@@ -48,7 +58,10 @@ sudo apt install ./waylaunch_1.0.0_$(dpkg --print-architecture).deb
 | Up / Down | Select an application |
 | Enter or left click | Launch the selected application |
 | `>` followed by a command, then Enter | Run a command |
+| `=` followed by an expression | Preview the result; press Enter to copy it to the clipboard |
 | Escape | Close Waylaunch |
+
+Expressions support `+`, `-`, `*`, `/`, and parentheses. Invalid expressions are shown as `Invalid expression`.
 
 ## Releases
 

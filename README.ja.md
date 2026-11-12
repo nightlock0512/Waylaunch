@@ -48,7 +48,7 @@ make deb
 生成したパッケージをインストールします。ファイル名の末尾はシステムのアーキテクチャによって異なります。
 
 ```sh
-sudo apt install ./waylaunch_1.0.0_$(dpkg --print-architecture).deb
+sudo apt install ./waylaunch_1.1.0_$(dpkg --print-architecture).deb
 ```
 
 ## 操作方法
@@ -66,9 +66,9 @@ sudo apt install ./waylaunch_1.0.0_$(dpkg --print-architecture).deb
 
 ## リリース
 
-`v1.0.0` のようなバージョンタグをpushすると、GitHub Actionsがタグに対応したバージョンのDebianパッケージを作成し、GitHub Releaseを公開します。
+`v1.1.0` のようなバージョンタグをpushすると、GitHub Actionsがタグに対応したバージョンのDebianパッケージを作成し、GitHub Releaseを公開します。
 
 ```sh
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```

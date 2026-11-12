@@ -5,7 +5,7 @@ LIBS = -lwayland-client -lxkbcommon -lfreetype -lpng
 
 TARGET = waylaunch
 PACKAGE ?= waylaunch
-VERSION ?= 1.0.0
+VERSION ?= 1.1.0
 MAINTAINER ?= Local build <root@localhost>
 ARCH = $(shell dpkg --print-architecture)
 DEB = $(PACKAGE)_$(VERSION)_$(ARCH).deb

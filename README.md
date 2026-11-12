@@ -47,7 +47,7 @@ make deb
 Install the generated package (the architecture suffix depends on your system):
 
 ```sh
-sudo apt install ./waylaunch_1.0.0_$(dpkg --print-architecture).deb
+sudo apt install ./waylaunch_1.1.0_$(dpkg --print-architecture).deb
 ```
 
 ## Controls
@@ -65,9 +65,9 @@ Expressions support `+`, `-`, `*`, `/`, and parentheses. Invalid expressions are
 
 ## Releases
 
-Push a version tag such as `v1.0.0` to build a version-matched Debian package and publish it with generated release notes on GitHub:
+Push a version tag such as `v1.1.0` to build a version-matched Debian package and publish it with generated release notes on GitHub:
 
 ```sh
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
